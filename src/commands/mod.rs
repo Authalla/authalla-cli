@@ -5,3 +5,4 @@ pub mod social_login;
 pub mod tenant;
 pub mod theme;
 pub mod user;
+pub mod well_known;

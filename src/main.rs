@@ -58,6 +58,12 @@ enum Commands {
         #[command(subcommand)]
         command: commands::social_login::SocialLoginCommands,
     },
+    /// Fetch well-known endpoints (OpenID configuration, JWKS)
+    #[command(name = "well-known")]
+    WellKnown {
+        #[command(subcommand)]
+        command: commands::well_known::WellKnownCommands,
+    },
 }
 
 #[derive(Subcommand)]
@@ -121,5 +127,6 @@ fn main() -> Result<()> {
         Commands::CustomEmail { command } => commands::custom_email::run(command),
         Commands::Client { command } => commands::client::run(command),
         Commands::SocialLogin { command } => commands::social_login::run(command),
+        Commands::WellKnown { command } => commands::well_known::run(command),
     }
 }
