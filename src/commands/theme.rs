@@ -1,4 +1,7 @@
+use std::path::PathBuf;
+
 use anyhow::{Context, Result};
+use base64::Engine;
 use clap::Subcommand;
 
 use crate::api::ApiClient;
@@ -26,6 +29,17 @@ pub enum ThemeCommands {
         /// JSON request body (see `authalla theme schema update` for full schema)
         #[arg(long)]
         json: String,
+    },
+    /// Upload a logo image for the tenant.
+    ///
+    /// Supported formats: PNG, JPEG, SVG, WebP (max ~525 KB before encoding).
+    ///
+    /// Example: authalla theme upload-logo --file logo.png
+    #[command(name = "upload-logo")]
+    UploadLogo {
+        /// Path to the logo image file
+        #[arg(long)]
+        file: PathBuf,
     },
     /// Print the JSON schema for the update operation.
     ///
@@ -55,6 +69,42 @@ pub fn run(cmd: ThemeCommands) -> Result<()> {
         ThemeCommands::Update { json } => {
             let body: serde_json::Value =
                 serde_json::from_str(&json).context("Invalid JSON input")?;
+            let result = api.put("/api/v1/theme", &body)?;
+            println!("{}", serde_json::to_string_pretty(&result)?);
+        }
+        ThemeCommands::UploadLogo { file } => {
+            let data = std::fs::read(&file)
+                .with_context(|| format!("Failed to read file: {}", file.display()))?;
+
+            let content_type = match file
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|e| e.to_lowercase())
+                .as_deref()
+            {
+                Some("png") => "image/png",
+                Some("jpg" | "jpeg") => "image/jpeg",
+                Some("svg") => "image/svg+xml",
+                Some("webp") => "image/webp",
+                _ => anyhow::bail!(
+                    "Unsupported file format. Supported: .png, .jpg, .jpeg, .svg, .webp"
+                ),
+            };
+
+            let encoded = base64::engine::general_purpose::STANDARD.encode(&data);
+
+            if encoded.len() > 700_000 {
+                anyhow::bail!(
+                    "File too large ({} bytes encoded, max 700000). Use a smaller image.",
+                    encoded.len()
+                );
+            }
+
+            let body = serde_json::json!({
+                "logo_base64": encoded,
+                "logo_content_type": content_type,
+            });
+
             let result = api.put("/api/v1/theme", &body)?;
             println!("{}", serde_json::to_string_pretty(&result)?);
         }
