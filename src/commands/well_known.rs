@@ -15,7 +15,7 @@ pub enum WellKnownCommands {
 
 pub fn run(cmd: WellKnownCommands) -> Result<()> {
     let cfg = config::load()?;
-    let base_url = cfg.api_url.trim_end_matches('/');
+    let base_url = cfg.base_url()?;
     let client = Client::new();
 
     match cmd {

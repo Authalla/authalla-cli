@@ -26,20 +26,19 @@ Download the latest release for your platform from [GitHub Releases](https://git
 
 ## Getting started
 
-### 1. Configure credentials
+### 1. Log in
 
-Before using the CLI, configure it with your Authalla API credentials:
+Authenticate with your Authalla account via your browser:
 
 ```sh
-authalla config set \
-  --api-url https://your-tenant.authalla.com \
-  --client-id your_client_id \
-  --client-secret your_client_secret
+authalla login
 ```
 
-Credentials are stored in `~/.config/authalla/config.json` with `0600` file permissions.
+This opens your browser for OAuth2 authentication. After logging in, the CLI stores your tokens securely in `~/.config/authalla/config.json` (with `0600` file permissions).
 
-### 2. Verify the configuration
+If you have access to multiple accounts, the CLI will prompt you to select one.
+
+### 2. Verify your session
 
 ```sh
 authalla config show
@@ -53,12 +52,39 @@ authalla user list
 authalla client list
 ```
 
+### Switching accounts and tenants
+
+```sh
+# List your accounts
+authalla accounts list
+
+# Switch to a different account
+authalla accounts select <account-id>
+
+# Switch to a different tenant within the current account
+authalla tenant select <tenant-id>
+```
+
+### M2M credentials (CI/CD, scripts)
+
+For non-interactive environments, configure machine-to-machine credentials instead:
+
+```sh
+authalla config set \
+  --api-url https://your-tenant.authalla.com \
+  --client-id your_client_id \
+  --client-secret your_client_secret
+```
+
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `config` | Configure API credentials |
-| `tenant` | Manage tenants |
+| `login` | Authenticate via browser (OAuth2 + PKCE) |
+| `logout` | Clear stored authentication tokens |
+| `accounts` | List and switch between accounts |
+| `config` | Configure M2M API credentials, show current config |
+| `tenant` | Manage tenants, switch active tenant |
 | `user` | Manage users |
 | `client` | Manage OAuth2 clients |
 | `theme` | Manage login page branding |
@@ -94,6 +120,9 @@ authalla tenant create --json '{"name": "Production", "allow_registration": true
 # Update a tenant with specific auth methods
 authalla tenant update --id tenant_abc123 \
   --json '{"name": "Production", "allow_registration": true, "auth_methods": ["magic_link", "passkeys", "social_logins"]}'
+
+# Switch active tenant
+authalla tenant select tenant_abc123
 
 # Delete a tenant
 authalla tenant delete --id tenant_abc123
@@ -221,7 +250,7 @@ authalla well-known openid-configuration
 authalla well-known jwks
 ```
 
-These commands do not require authentication — they only need the `api_url` from your configuration.
+These commands do not require authentication — they only need a configured session or M2M credentials.
 
 ## Output
 

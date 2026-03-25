@@ -1,32 +1,68 @@
 use anyhow::{Context, Result};
-use reqwest::blocking::{Client, Response};
+use reqwest::blocking::{Client, RequestBuilder, Response};
 
 use crate::auth;
-use crate::config;
+use crate::config::{self, AuthMethod};
 
 pub struct ApiClient {
     client: Client,
     base_url: String,
     token: String,
+    /// Tenant ID header, set for user token auth (not M2M).
+    tenant_id: Option<String>,
 }
 
 impl ApiClient {
     pub fn new() -> Result<Self> {
         let mut cfg = config::load()?;
         let token = auth::get_token(&mut cfg)?;
+        let base_url = cfg.base_url()?;
+
+        let tenant_id = if cfg.auth_method == AuthMethod::Login {
+            Some(
+                cfg.tenant_id
+                    .clone()
+                    .context("No tenant selected. Run `authalla accounts select` first.")?,
+            )
+        } else {
+            None
+        };
+
         Ok(Self {
             client: Client::new(),
-            base_url: cfg.api_url.trim_end_matches('/').to_string(),
+            base_url,
             token,
+            tenant_id,
         })
+    }
+
+    /// Create an ApiClient for requests that don't require a tenant (e.g. /api/v1/me).
+    pub fn new_without_tenant() -> Result<Self> {
+        let mut cfg = config::load()?;
+        let token = auth::get_token(&mut cfg)?;
+        let base_url = cfg.base_url()?;
+
+        Ok(Self {
+            client: Client::new(),
+            base_url,
+            token,
+            tenant_id: None,
+        })
+    }
+
+    fn apply_headers(&self, req: RequestBuilder) -> RequestBuilder {
+        let req = req.bearer_auth(&self.token);
+        if let Some(ref tenant_id) = self.tenant_id {
+            req.header("X-Tenant-ID", tenant_id)
+        } else {
+            req
+        }
     }
 
     pub fn get(&self, path: &str) -> Result<serde_json::Value> {
         let url = format!("{}{}", self.base_url, path);
         let resp = self
-            .client
-            .get(&url)
-            .bearer_auth(&self.token)
+            .apply_headers(self.client.get(&url))
             .send()
             .with_context(|| format!("Request failed: GET {}", path))?;
         self.handle_response(resp)
@@ -35,9 +71,7 @@ impl ApiClient {
     pub fn get_with_query(&self, path: &str, query: &[(&str, &str)]) -> Result<serde_json::Value> {
         let url = format!("{}{}", self.base_url, path);
         let resp = self
-            .client
-            .get(&url)
-            .bearer_auth(&self.token)
+            .apply_headers(self.client.get(&url))
             .query(query)
             .send()
             .with_context(|| format!("Request failed: GET {}", path))?;
@@ -47,9 +81,7 @@ impl ApiClient {
     pub fn post(&self, path: &str, body: &serde_json::Value) -> Result<serde_json::Value> {
         let url = format!("{}{}", self.base_url, path);
         let resp = self
-            .client
-            .post(&url)
-            .bearer_auth(&self.token)
+            .apply_headers(self.client.post(&url))
             .json(body)
             .send()
             .with_context(|| format!("Request failed: POST {}", path))?;
@@ -59,9 +91,7 @@ impl ApiClient {
     pub fn put(&self, path: &str, body: &serde_json::Value) -> Result<serde_json::Value> {
         let url = format!("{}{}", self.base_url, path);
         let resp = self
-            .client
-            .put(&url)
-            .bearer_auth(&self.token)
+            .apply_headers(self.client.put(&url))
             .json(body)
             .send()
             .with_context(|| format!("Request failed: PUT {}", path))?;
@@ -71,9 +101,7 @@ impl ApiClient {
     pub fn delete(&self, path: &str) -> Result<()> {
         let url = format!("{}{}", self.base_url, path);
         let resp = self
-            .client
-            .delete(&url)
-            .bearer_auth(&self.token)
+            .apply_headers(self.client.delete(&url))
             .send()
             .with_context(|| format!("Request failed: DELETE {}", path))?;
 

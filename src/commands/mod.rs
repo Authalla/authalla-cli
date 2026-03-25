@@ -1,6 +1,9 @@
+pub mod account;
 pub mod client;
 pub mod custom_domain;
 pub mod custom_email;
+pub mod login;
+pub mod logout;
 pub mod social_login;
 pub mod tenant;
 pub mod theme;

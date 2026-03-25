@@ -15,7 +15,23 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Configure API credentials
+    /// Authenticate via browser (OAuth2 Authorization Code + PKCE)
+    Login {
+        /// OIDC issuer URL of the admin tenant (default: https://authalla.com)
+        #[arg(long)]
+        issuer_url: Option<String>,
+        /// OAuth2 client ID for the CLI (default: authalla-cli)
+        #[arg(long)]
+        client_id: Option<String>,
+    },
+    /// Clear stored authentication tokens
+    Logout,
+    /// Manage accounts
+    Accounts {
+        #[command(subcommand)]
+        command: commands::account::AccountCommands,
+    },
+    /// Configure M2M API credentials
     Config {
         #[command(subcommand)]
         command: ConfigCommands,
@@ -68,7 +84,7 @@ enum Commands {
 
 #[derive(Subcommand)]
 enum ConfigCommands {
-    /// Set API credentials
+    /// Set M2M API credentials (for CI/CD and scripts)
     Set {
         /// Authalla API base URL
         #[arg(long)]
@@ -88,34 +104,61 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
+        Commands::Login {
+            issuer_url,
+            client_id,
+        } => commands::login::run(issuer_url, client_id),
+        Commands::Logout => commands::logout::run(),
+        Commands::Accounts { command } => commands::account::run(command),
         Commands::Config { command } => match command {
             ConfigCommands::Set {
                 api_url,
                 client_id,
                 client_secret,
             } => {
-                let cfg = config::Config {
-                    api_url,
-                    client_id,
-                    client_secret,
-                    token: None,
-                };
+                let cfg = config::Config::new_client_credentials(api_url, client_id, client_secret);
                 config::save(&cfg)?;
                 eprintln!("Configuration saved.");
                 Ok(())
             }
             ConfigCommands::Show => {
                 let cfg = config::load()?;
-                // Redact the secret for display
-                let display = serde_json::json!({
-                    "api_url": cfg.api_url,
-                    "client_id": cfg.client_id,
-                    "client_secret": format!("{}…", &cfg.client_secret[..8.min(cfg.client_secret.len())]),
-                    "token": cfg.token.as_ref().map(|t| serde_json::json!({
-                        "expires_at": t.expires_at,
-                        "has_token": true,
-                    })),
-                });
+                let display = match cfg.auth_method {
+                    config::AuthMethod::Login => {
+                        serde_json::json!({
+                            "auth_method": "login",
+                            "issuer_url": cfg.issuer_url,
+                            "client_id": cfg.client_id,
+                            "user": cfg.user.as_ref().map(|u| serde_json::json!({
+                                "email": u.email,
+                                "name": u.name,
+                            })),
+                            "account_id": cfg.account_id,
+                            "tenant_id": cfg.tenant_id,
+                            "has_token": cfg.access_token.is_some(),
+                            "expires_at": cfg.expires_at,
+                        })
+                    }
+                    config::AuthMethod::ClientCredentials => {
+                        let client_id = cfg.client_id.as_deref().unwrap_or("");
+                        let client_secret = cfg.client_secret.as_deref().unwrap_or("");
+                        let secret_display = if client_secret.len() > 8 {
+                            format!("{}...", &client_secret[..8])
+                        } else {
+                            "***".to_string()
+                        };
+                        serde_json::json!({
+                            "auth_method": "client_credentials",
+                            "api_url": cfg.api_url,
+                            "client_id": client_id,
+                            "client_secret": secret_display,
+                            "token": cfg.token.as_ref().map(|t| serde_json::json!({
+                                "expires_at": t.expires_at,
+                                "has_token": true,
+                            })),
+                        })
+                    }
+                };
                 println!("{}", serde_json::to_string_pretty(&display)?);
                 Ok(())
             }

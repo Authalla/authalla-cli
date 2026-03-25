@@ -2,9 +2,15 @@ use anyhow::{Context, Result};
 use clap::Subcommand;
 
 use crate::api::ApiClient;
+use crate::config;
 
 #[derive(Subcommand)]
 pub enum TenantCommands {
+    /// Switch the active tenant for subsequent CLI commands.
+    Select {
+        /// Tenant public ID to switch to
+        id: String,
+    },
     /// List all tenants.
     ///
     /// Returns: { tenants: [...], total, limit, offset }
@@ -76,6 +82,13 @@ pub fn run(cmd: TenantCommands) -> Result<()> {
             print_schema(&operation)?;
             return Ok(());
         }
+        TenantCommands::Select { id } => {
+            let mut cfg = config::load()?;
+            cfg.tenant_id = Some(id.clone());
+            config::save(&cfg)?;
+            eprintln!("Active tenant: {}", id);
+            return Ok(());
+        }
         _ => {}
     }
 
@@ -112,7 +125,7 @@ pub fn run(cmd: TenantCommands) -> Result<()> {
             api.delete(&format!("/api/v1/tenants/{}", id))?;
             println!("{{\"deleted\": true}}");
         }
-        TenantCommands::Schema { .. } => unreachable!(),
+        TenantCommands::Schema { .. } | TenantCommands::Select { .. } => unreachable!(),
     }
     Ok(())
 }
